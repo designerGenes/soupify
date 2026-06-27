@@ -24,6 +24,10 @@ pub struct Config {
     pub allow_fuzzy_task: bool,
     pub selection_provenance: bool,
     pub selection_provenance_max_bytes: usize,
+    pub secret_scan: String,
+    pub redact_secrets: bool,
+    pub secret_rules_path: Option<PathBuf>,
+    pub graph_token_model: String,
 }
 
 impl Default for Config {
@@ -45,6 +49,10 @@ impl Default for Config {
             allow_fuzzy_task: true,
             selection_provenance: false,
             selection_provenance_max_bytes: 2048,
+            secret_scan: "warn".to_string(),
+            redact_secrets: false,
+            secret_rules_path: None,
+            graph_token_model: "o200k_base".to_string(),
         }
     }
 }

@@ -18,13 +18,15 @@ Zero or more **meta blocks** (always first) followed by zero or more **file bloc
 ## File Block Header
 
 ```
-#SOUP "<json_escaped_abs_path>" [#SOUP_PARTIAL_LINES <s>-<e>] #SOUPED_LINES <N> #SOUP_TRAILING_NEWLINE <0|1>
+#SOUP "<json_escaped_abs_path>" [#SOUP_PARTIAL_LINES <s>-<e>] #SOUPED_LINES <N> #SOUP_TRAILING_NEWLINE <0|1> [#SOUP_BASE_SHA <hex>] [#SOUP_READONLY <true|false>]
 ```
 
-- **Path** — Original absolute path, JSON-encoded (backslashes → `\\`, quotes → `\"`). Preserve exactly when resoupifying.
-- **#SOUP_PARTIAL_LINES** *(optional)* — This block replaces only lines `s`–`e` (1-indexed, inclusive) of the existing file. Omit for full-file blocks.
-- **#SOUPED_LINES** — Exact count of content lines immediately following the header.
-- **#SOUP_TRAILING_NEWLINE** — `1` = file ends with `\n`, `0` = it does not. Serializer always writes `0` or `1`; parser also accepts `true`/`false`.
+- **Path** — Original absolute path, JSON-encoded. Preserve exactly when resoupifying.
+- **#SOUP_PARTIAL_LINES** *(optional)* — Replaces only lines `s`–`e` (1-indexed, inclusive) of the existing file.
+- **#SOUPED_LINES** — Exact count of content lines following the header.
+- **#SOUP_TRAILING_NEWLINE** — `1` = file ends with `\n`, `0` = it does not.
+- **#SOUP_BASE_SHA** *(optional)* — blake3 hash of the file at soupify time. When returning a PARTIAL block, carry this forward so the host can detect drift. If the on-disk file changed since soupification, desoupify refuses the partial.
+- **#SOUP_READONLY** *(optional)* — `true` means this block is context-only. Read it, honor it, but NEVER modify it and NEVER emit it in resoupified output.
 
 **Examples:**
 ```
@@ -131,4 +133,16 @@ tres
 - Prefer partial blocks for large files with small changes to reduce output size.
 - Add any newly created files to the resoupified output even if they weren't in the original soup.
 - Do not emit `#SOUP_META` blocks — those are produced by the soupify CLI, not by AI.
+- Do not emit `#SOUP_READONLY true` blocks — those are context-only; never resoupify them.
+- Carry `#SOUP_BASE_SHA` forward unchanged when returning partial blocks for the same file.
 - If the user requests specific files, only resoupify those files.
+
+## Requesting Files
+
+The repo-map meta block may reference files NOT present as editable #SOUP blocks. Those are context only. If you need the full contents of such a file to complete the task, do NOT infer or hallucinate them — request the file by emitting a line in your text response:
+
+```
+#SOUP_REQUEST "<absolute_path>" <short reason>
+```
+
+The user can then re-soup with that file included (e.g. `soupify --seed <path> ...`).

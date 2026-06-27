@@ -85,6 +85,18 @@ pub enum SoupifyError {
 
     #[error("soup budget exceeded: highest-priority file {path} ({bytes} bytes) + map already exceed cap ({cap} bytes); raise --max-soup-bytes, narrow selectors, or use partial blocks")]
     SoupBudgetExceeded { path: PathBuf, bytes: usize, cap: usize },
+
+    #[error("base SHA drift for {path}: expected {expected}, got {actual}; file changed since soupification")]
+    BaseShaDrift { path: PathBuf, expected: String, actual: String },
+
+    #[error("write target {path} escapes allowed roots {allowed_roots}", allowed_roots = format_paths(.allowed_roots))]
+    WriteOutsideAllowedRoot { path: PathBuf, allowed_roots: Vec<PathBuf> },
+
+    #[error("unexpected #SOUP_META block in returned soup; AI must not emit meta blocks")]
+    UnexpectedMetaInReturn,
+
+    #[error("secrets detected in soup content: {findings_summary}")]
+    SecretsDetected { findings_summary: String },
 }
 
 fn format_paths(paths: &[PathBuf]) -> String {

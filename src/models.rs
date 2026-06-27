@@ -21,6 +21,11 @@ pub struct CliArgs {
     pub max_soup_bytes: Option<usize>,
     pub reindex: bool,
     pub explain_selection: bool,
+    pub dry_run: bool,
+    pub allow_roots: Vec<PathBuf>,
+    pub allow_secrets: bool,
+    pub redact: bool,
+    pub context_files: Vec<PathBuf>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -31,6 +36,8 @@ pub struct SourceFile {
     pub contents: String,
     pub logical_line_count: usize,
     pub trailing_newline: bool,
+    pub base_sha: Option<String>,
+    pub read_only: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -46,6 +53,8 @@ pub struct SoupBlock {
     pub logical_line_count: usize,
     pub trailing_newline: bool,
     pub content_lines: Vec<String>,
+    pub base_sha: Option<String>,
+    pub read_only: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -9,6 +9,7 @@ use crate::pathing::{
     build_output_filename, collect_source_files, filename_token, resolve_absolute,
     resolve_output_dir,
 };
+use crate::secrets;
 use crate::selection;
 use crate::sharktopus;
 use crate::soup_format::{analyze_contents, serialize_document};
@@ -90,6 +91,20 @@ pub fn run_soupify(args: &CliArgs, config: &Config) -> Result<PathBuf, SoupifyEr
         .map(build_source_file)
         .collect::<Result<Vec<_>, _>>()?;
 
+    let mut source_files = secrets::enforce(&source_files, config, args.allow_secrets, args.redact)?;
+
+    for ctx_path in &args.context_files {
+        let resolved = resolve_absolute(ctx_path, &cwd)?;
+        if !resolved.exists() {
+            eprintln!("warning: context file {} not found, skipping", resolved.display());
+            continue;
+        }
+        let mut sf = build_source_file(&resolved)?;
+        sf.read_only = true;
+        sf.base_sha = None;
+        source_files.push(sf);
+    }
+
     let mut meta_blocks = if graph::should_include_graph(args.include_graph, config) {
         build_graph_meta_blocks(&corpus_root, &files, config)?
     } else {
@@ -142,8 +157,10 @@ fn build_source_file(path: &PathBuf) -> Result<SourceFile, SoupifyError> {
         source: error,
     })?;
     let contents =
-        String::from_utf8(bytes).map_err(|_| SoupifyError::Utf8DecodeFailure(path.clone()))?;
+        String::from_utf8(bytes.clone()).map_err(|_| SoupifyError::Utf8DecodeFailure(path.clone()))?;
     let (logical_line_count, trailing_newline) = analyze_contents(&contents);
+
+    let base_sha = blake3::hash(&bytes).to_hex().to_string();
 
     Ok(SourceFile {
         original_absolute_path: path.clone(),
@@ -156,5 +173,7 @@ fn build_source_file(path: &PathBuf) -> Result<SourceFile, SoupifyError> {
         contents,
         logical_line_count,
         trailing_newline,
+        base_sha: Some(base_sha),
+        read_only: false,
     })
 }

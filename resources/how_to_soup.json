@@ -16,16 +16,19 @@
     "soup_format_specification": {
       "description": "A soup file contains zero or more meta blocks (first) followed by zero or more file blocks. Blocks concatenate directly — no blank lines between them.",
       "file_block_header": {
-        "format": "#SOUP \"<json_escaped_abs_path>\" [#SOUP_PARTIAL_LINES <s>-<e>] #SOUPED_LINES <N> #SOUP_TRAILING_NEWLINE <0|1>",
+        "format": "#SOUP \"<json_escaped_abs_path>\" [#SOUP_PARTIAL_LINES <s>-<e>] #SOUPED_LINES <N> #SOUP_TRAILING_NEWLINE <0|1> [#SOUP_BASE_SHA <hex64>] [#SOUP_READONLY <true|false>]",
         "components": {
           "path": "Original absolute path, JSON-encoded (backslashes→\\\\, quotes→\\\"). Preserve exactly on resoupify.",
-          "SOUP_PARTIAL_LINES": "Optional. This block replaces only lines s–e (1-indexed, inclusive) of the existing file. Omit for full-file blocks.",
+          "SOUP_PARTIAL_LINES": "Optional. Replaces only lines s–e (1-indexed, inclusive) of the existing file. Omit for full-file blocks.",
           "SOUPED_LINES": "Exact count of content lines immediately following this header.",
-          "SOUP_TRAILING_NEWLINE": "1 = file ends with \\n, 0 = it does not. Serializer always writes 0 or 1 (parser also accepts true/false)."
+          "SOUP_TRAILING_NEWLINE": "1 = file ends with \\n, 0 = it does not. Always serialize as 0 or 1.",
+          "SOUP_BASE_SHA": "Optional. blake3 hash of the file at soupify time (64-char hex). When returning a PARTIAL block, carry this forward unchanged so the host can detect on-disk drift. Omit on redacted or read-only files.",
+          "SOUP_READONLY": "Optional. true = context-only block. Read and honor it, but NEVER modify it and NEVER emit it in resoupified output."
         },
         "examples": [
-          "#SOUP \"/home/user/src/Button.tsx\" #SOUPED_LINES 42 #SOUP_TRAILING_NEWLINE 1",
-          "#SOUP \"/home/user/src/main.rs\" #SOUP_PARTIAL_LINES 5-10 #SOUPED_LINES 6 #SOUP_TRAILING_NEWLINE 1"
+          "#SOUP \"/home/user/src/Button.tsx\" #SOUPED_LINES 42 #SOUP_TRAILING_NEWLINE 1 #SOUP_BASE_SHA a1b2c3...",
+          "#SOUP \"/home/user/src/main.rs\" #SOUP_PARTIAL_LINES 5-10 #SOUPED_LINES 6 #SOUP_TRAILING_NEWLINE 1 #SOUP_BASE_SHA a1b2c3...",
+          "#SOUP \"/home/user/registry.py\" #SOUPED_LINES 106 #SOUP_TRAILING_NEWLINE 1 #SOUP_READONLY true"
         ]
       },
       "meta_block_header": {
@@ -46,7 +49,7 @@
         "7. Repeat until all blocks are processed."
       ],
       "implementation_notes": [
-        "File block header regex: ^#SOUP (\"(?:\\\\.|[^\"\\\\])*\")(?: #SOUP_PARTIAL_LINES ([0-9]+)-([0-9]+))? #SOUPED_LINES ([0-9]+) #SOUP_TRAILING_NEWLINE (0|1|true|false)$",
+        "File block header regex: ^#SOUP (\"(?:\\\\.|[^\"\\\\])*\")(?: #SOUP_PARTIAL_LINES ([0-9]+)-([0-9]+))? #SOUPED_LINES ([0-9]+) #SOUP_TRAILING_NEWLINE (0|1|true|false)(?: #SOUP_BASE_SHA ([0-9a-f]{64}))?(?: #SOUP_READONLY (true|false))?$",
         "Create parent directories automatically (mkdir -p equivalent).",
         "Partial blocks require the target file to exist and be long enough to cover end_line.",
         "Multiple partial blocks on the same file are applied in document order; each sees the result of the previous."
@@ -84,9 +87,16 @@
         "JSON-escape file paths (use JSON string serialization).",
         "Use absolute paths in headers.",
         "Do not re-emit unchanged files unless the user asks.",
-        "Do not emit #SOUP_META blocks."
+        "Do not emit #SOUP_META blocks.",
+        "Do not emit #SOUP_READONLY true blocks — those are context-only; never resoupify them.",
+        "Carry #SOUP_BASE_SHA forward unchanged when returning partial blocks for the same file."
       ],
       "delivery": "In a chat context, emit the resoupified output as a single fenced code block with language tag `soup` (or no language) so #SOUP/#SOUP_META lines are not rendered as headers. Do not split across multiple code blocks. With tool/disk access, write to a .md file at the user's chosen path."
+    },
+    "requesting_files": {
+      "rule": "The repo-map meta block may reference files NOT present as editable #SOUP blocks. Those are context only. If you need the full contents of such a file to complete the task, do NOT infer or hallucinate them — request the file by emitting a line in your text response (not inside a soup block):",
+      "format": "#SOUP_REQUEST \"<absolute_path>\" <short reason>",
+      "note": "The user can then re-soup with that file included (e.g. soupify --seed <path> ...). This is a convention, not a parser change to soup files."
     },
     "host_integration": {
       "auto_desoupify": "#SOUP_AUTO_DESOUPIFY is NOT a tag that appears inside a soup file. Auto-desoupify is a host-side config flag (soupify auto_desoupify: true in the host's config) that registers a filesystem rule: any *.soup.md file landing in the watched downloads folder is automatically desoupified via `soupify -d __FILE__`. If you ever encounter the literal string #SOUP_AUTO_DESOUPIFY inside a soup body, treat it as ordinary file content — it is not part of this spec and carries no meaning for your parser."

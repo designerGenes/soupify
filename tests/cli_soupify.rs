@@ -186,6 +186,7 @@ fn generates_expected_output_filename() {
             env_file.as_os_str(),
             file1.as_os_str(),
         ])
+        .arg("--allow-secrets")
         .arg("-o")
         .arg(&output_dir)
         .assert()

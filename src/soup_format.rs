@@ -56,7 +56,7 @@ pub fn parse_document(markdown: &str) -> Result<SoupDocument, SoupifyError> {
             continue;
         }
 
-        let (path, partial_range, logical_line_count, trailing_newline) =
+        let (path, partial_range, logical_line_count, trailing_newline, base_sha, read_only) =
             parse_header(header, index + 1)?;
         index += 1;
 
@@ -80,6 +80,8 @@ pub fn parse_document(markdown: &str) -> Result<SoupDocument, SoupifyError> {
             logical_line_count,
             trailing_newline,
             content_lines,
+            base_sha,
+            read_only,
         });
     }
 
@@ -156,11 +158,21 @@ fn serialize_header(file: &SourceFile) -> Result<String, SoupifyError> {
     let path = serde_json::to_string(&file.original_absolute_path.to_string_lossy().to_string())
         .map_err(|error| SoupifyError::SoupParseFailure(error.to_string()))?;
 
-    Ok(format!(
+    let mut header = format!(
         "#SOUP {path} #SOUPED_LINES {} #SOUP_TRAILING_NEWLINE {}",
         file.logical_line_count,
         usize::from(file.trailing_newline)
-    ))
+    );
+
+    if let Some(ref sha) = file.base_sha {
+        header.push_str(&format!(" #SOUP_BASE_SHA {sha}"));
+    }
+
+    if file.read_only {
+        header.push_str(" #SOUP_READONLY true");
+    }
+
+    Ok(header)
 }
 
 pub(crate) fn content_lines(contents: &str) -> Vec<String> {
@@ -193,7 +205,7 @@ pub fn analyze_contents(contents: &str) -> (usize, bool) {
 fn parse_header(
     line: &str,
     line_number: usize,
-) -> Result<(PathBuf, Option<SoupPartialRange>, usize, bool), SoupifyError> {
+) -> Result<(PathBuf, Option<SoupPartialRange>, usize, bool, Option<String>, bool), SoupifyError> {
     let path_captures = header_path_regex().captures(line).ok_or_else(|| {
         SoupifyError::SoupParseFailure(format!(
             "malformed soup header on line {line_number}: {line}"
@@ -292,11 +304,20 @@ fn parse_header(
         }
     };
 
+    let base_sha = captures.get(6).map(|m| m.as_str().to_string());
+
+    let read_only = captures
+        .get(7)
+        .map(|m| m.as_str() == "true")
+        .unwrap_or(false);
+
     Ok((
         PathBuf::from(path),
         partial_range,
         logical_line_count,
         trailing_newline,
+        base_sha,
+        read_only,
     ))
 }
 
@@ -312,7 +333,7 @@ fn header_regex() -> &'static Regex {
     static HEADER_REGEX: OnceLock<Regex> = OnceLock::new();
     HEADER_REGEX.get_or_init(|| {
         Regex::new(
-            r#"^#SOUP ("(?:\\.|[^"\\])*")(?: #SOUP_PARTIAL_LINES ([0-9]+)-([0-9]+))? #SOUPED_LINES ([0-9]+) #SOUP_TRAILING_NEWLINE (0|1|true|false)$"#,
+            r#"^#SOUP ("(?:\\.|[^"\\])*")(?: #SOUP_PARTIAL_LINES ([0-9]+)-([0-9]+))? #SOUPED_LINES ([0-9]+) #SOUP_TRAILING_NEWLINE (0|1|true|false)(?: #SOUP_BASE_SHA ([0-9a-f]{64}))?(?: #SOUP_READONLY (true|false))?$"#,
         )
         .expect("header regex should compile")
     })
@@ -349,6 +370,8 @@ mod tests {
             contents: contents.to_string(),
             logical_line_count,
             trailing_newline,
+            base_sha: None,
+            read_only: false,
         }
     }
 

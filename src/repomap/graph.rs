@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 use super::tags::{Tag, TagKind};
 
@@ -17,10 +17,10 @@ pub fn build_and_rank(
         return Vec::new();
     }
 
-    let mut defines: HashMap<String, HashSet<String>> = HashMap::new();
-    let mut references: HashMap<String, HashSet<String>> = HashMap::new();
-    let mut personalization: HashMap<String, f64> = HashMap::new();
-    let mut all_rel_fnames: HashSet<String> = HashSet::new();
+    let mut defines: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    let mut references: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    let mut personalization: BTreeMap<String, f64> = BTreeMap::new();
+    let mut all_rel_fnames: BTreeSet<String> = BTreeSet::new();
 
     for tag in all_tags {
         all_rel_fnames.insert(tag.rel_fname.clone());
@@ -47,7 +47,7 @@ pub fn build_and_rank(
         }
     }
 
-    let mut edge_weights: HashMap<(String, String), f64> = HashMap::new();
+    let mut edge_weights: BTreeMap<(String, String), f64> = BTreeMap::new();
 
     for (name, ref_fnames) in &references {
         if let Some(defs) = defines.get(name) {
@@ -93,19 +93,24 @@ pub fn build_and_rank(
     }
 
     ranked_tags.sort_by(|a, b| {
-        b.rank.partial_cmp(&a.rank).unwrap_or(std::cmp::Ordering::Equal)
+        b.rank
+            .partial_cmp(&a.rank)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a.tag.rel_fname.cmp(&b.tag.rel_fname))
+            .then_with(|| a.tag.line.cmp(&b.tag.line))
+            .then_with(|| a.tag.name.cmp(&b.tag.name))
     });
     ranked_tags
 }
 
 fn pagerank(
-    edge_weights: &HashMap<(String, String), f64>,
-    personalization: &HashMap<String, f64>,
-    all_nodes: &HashSet<String>,
-) -> HashMap<String, f64> {
+    edge_weights: &BTreeMap<(String, String), f64>,
+    personalization: &BTreeMap<String, f64>,
+    all_nodes: &BTreeSet<String>,
+) -> BTreeMap<String, f64> {
     let n = all_nodes.len();
     if n == 0 {
-        return HashMap::new();
+        return BTreeMap::new();
     }
 
     let damping = 0.85_f64;
@@ -113,7 +118,7 @@ fn pagerank(
     let tol = 1e-6_f64;
 
     let total_pers: f64 = personalization.values().sum();
-    let pers_norm: HashMap<String, f64> = if total_pers > 0.0 {
+    let pers_norm: BTreeMap<String, f64> = if total_pers > 0.0 {
         personalization
             .iter()
             .map(|(k, v)| (k.clone(), v / total_pers))
@@ -126,12 +131,12 @@ fn pagerank(
     };
 
     let uniform = 1.0 / n as f64;
-    let mut ranks: HashMap<String, f64> = all_nodes
+    let mut ranks: BTreeMap<String, f64> = all_nodes
         .iter()
         .map(|node| (node.clone(), uniform))
         .collect();
 
-    let mut out_strength: HashMap<String, f64> = HashMap::new();
+    let mut out_strength: BTreeMap<String, f64> = BTreeMap::new();
     for node in all_nodes {
         let mut strength = 0.0;
         for ((src, _), w) in edge_weights {
@@ -143,7 +148,7 @@ fn pagerank(
     }
 
     for _ in 0..max_iter {
-        let mut new_ranks: HashMap<String, f64> = all_nodes
+        let mut new_ranks: BTreeMap<String, f64> = all_nodes
             .iter()
             .map(|node| {
                 let p = pers_norm.get(node).copied().unwrap_or(0.0);

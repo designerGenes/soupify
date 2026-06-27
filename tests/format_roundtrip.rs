@@ -16,6 +16,8 @@ fn source_file(path: &str, contents: &str) -> SourceFile {
         contents: contents.to_string(),
         logical_line_count,
         trailing_newline,
+        base_sha: None,
+        read_only: false,
     }
 }
 
@@ -82,6 +84,8 @@ fn parses_partial_block_metadata() {
             logical_line_count: 2,
             trailing_newline: false,
             content_lines: vec!["updated".to_string(), "lines".to_string()],
+            base_sha: None,
+            read_only: false,
         }]
     );
 }

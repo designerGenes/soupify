@@ -48,6 +48,16 @@ struct RawCliArgs {
     reindex: bool,
     #[arg(long = "explain-selection")]
     explain_selection: bool,
+    #[arg(long = "dry-run")]
+    dry_run: bool,
+    #[arg(long = "allow-root", value_name = "DIR")]
+    allow_roots: Vec<PathBuf>,
+    #[arg(long = "allow-secrets")]
+    allow_secrets: bool,
+    #[arg(long = "redact")]
+    redact: bool,
+    #[arg(long = "context-file", value_name = "FILE")]
+    context_files: Vec<PathBuf>,
     #[arg(value_name = "INPUT", required = true)]
     inputs: Vec<PathBuf>,
 }
@@ -96,6 +106,11 @@ where
         max_soup_bytes: parsed.max_soup_bytes,
         reindex: parsed.reindex,
         explain_selection: parsed.explain_selection,
+        dry_run: parsed.dry_run,
+        allow_roots: parsed.allow_roots,
+        allow_secrets: parsed.allow_secrets,
+        redact: parsed.redact,
+        context_files: parsed.context_files,
     })
 }
 

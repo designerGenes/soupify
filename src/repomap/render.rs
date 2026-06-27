@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::path::Path;
 
 use super::graph::RankedTag;
@@ -8,7 +8,7 @@ pub fn render_tree(ranked_tags: &[RankedTag], root: &Path) -> String {
         return String::new();
     }
 
-    let mut file_tags: HashMap<String, Vec<(f64, &RankedTag)>> = HashMap::new();
+    let mut file_tags: BTreeMap<String, Vec<(f64, &RankedTag)>> = BTreeMap::new();
     for rt in ranked_tags {
         file_tags
             .entry(rt.tag.rel_fname.clone())
@@ -20,7 +20,10 @@ pub fn render_tree(ranked_tags: &[RankedTag], root: &Path) -> String {
     sorted_files.sort_by(|a, b| {
         let max_a = a.1.iter().map(|(r, _)| *r).fold(0.0_f64, |acc, v| acc.max(v));
         let max_b = b.1.iter().map(|(r, _)| *r).fold(0.0_f64, |acc, v| acc.max(v));
-        max_b.partial_cmp(&max_a).unwrap_or(std::cmp::Ordering::Equal)
+        max_b
+            .partial_cmp(&max_a)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a.0.cmp(&b.0))
     });
 
     let mut parts = Vec::new();
@@ -83,5 +86,19 @@ pub fn count_tokens(text: &str) -> usize {
 }
 
 fn estimate_tokens(text: &str) -> usize {
+    use std::sync::OnceLock;
+    static TOKENIZER: OnceLock<Option<tiktoken_rs::CoreBPE>> = OnceLock::new();
+
+    let tokenizer = TOKENIZER.get_or_init(|| {
+        tiktoken_rs::get_bpe_from_tokenizer(tiktoken_rs::tokenizer::Tokenizer::O200kBase)
+            .or_else(|_| tiktoken_rs::get_bpe_from_tokenizer(tiktoken_rs::tokenizer::Tokenizer::Cl100kBase))
+            .ok()
+    });
+
+    if let Some(bpe) = tokenizer {
+        let tokens = bpe.encode_with_special_tokens(text);
+        return tokens.len();
+    }
+
     (text.len() / 4).max(1)
 }

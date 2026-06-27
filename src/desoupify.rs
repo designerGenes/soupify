@@ -49,9 +49,70 @@ pub fn run_desoupify(args: &CliArgs, config: &Config) -> Result<Vec<PathBuf>, So
         }
     };
 
+    if !document.meta_blocks.is_empty() {
+        eprintln!(
+            "warning: {} #SOUP_META block(s) found in soup; these are reference-only and will be skipped during desoupify",
+            document.meta_blocks.len()
+        );
+    }
+
+    let allowed_roots = compute_allowed_roots(&document.blocks, &args.allow_roots, &cwd);
+
     let mut restored_paths = Vec::with_capacity(document.blocks.len());
     for block in document.blocks {
         let restored_path = block.original_absolute_path.clone();
+
+        if block.read_only {
+            eprintln!("warning: read-only block for {} skipped in desoupify", restored_path.display());
+            continue;
+        }
+
+        if let Some(ref sha) = block.base_sha {
+            if block.partial_range.is_some() {
+                if let Ok(on_disk_bytes) = fs::read(&restored_path) {
+                    let actual = blake3::hash(&on_disk_bytes).to_hex().to_string();
+                    if actual != *sha {
+                        if args.dry_run {
+                            eprintln!(
+                                "warning: base SHA drift for {}: expected {}, got {} (dry-run preview only)",
+                                restored_path.display(), sha, actual
+                            );
+                            continue;
+                        }
+                        return Err(SoupifyError::BaseShaDrift {
+                            path: restored_path.clone(),
+                            expected: sha.clone(),
+                            actual,
+                        });
+                    }
+                }
+            }
+        }
+
+        if !is_within_allowed_roots(&restored_path, &allowed_roots) {
+            return Err(SoupifyError::WriteOutsideAllowedRoot {
+                path: restored_path.clone(),
+                allowed_roots: allowed_roots.clone(),
+            });
+        }
+
+        if block.base_sha.is_none() && !block.read_only {
+            eprintln!(
+                "warning: novel file in returned soup: {} (no base SHA)",
+                restored_path.display()
+            );
+        }
+
+        if args.dry_run {
+            let contents = materialize_block_contents(&restored_path, &block)?;
+            let existing = fs::read_to_string(&restored_path).unwrap_or_default();
+            let diff = unified_diff(&existing, &contents, &restored_path);
+            if !diff.is_empty() {
+                println!("{}", diff);
+            }
+            restored_paths.push(restored_path);
+            continue;
+        }
 
         if let Some(parent) = restored_path.parent() {
             fs::create_dir_all(parent).map_err(|error| SoupifyError::DirectoryCreationFailure {
@@ -68,7 +129,83 @@ pub fn run_desoupify(args: &CliArgs, config: &Config) -> Result<Vec<PathBuf>, So
         restored_paths.push(restored_path);
     }
 
+    if args.dry_run {
+        println!("dry-run: {} files would be written", restored_paths.len());
+    }
+
     Ok(restored_paths)
+}
+
+fn compute_allowed_roots(blocks: &[SoupBlock], extra: &[PathBuf], cwd: &Path) -> Vec<PathBuf> {
+    let mut roots: Vec<PathBuf> = extra
+        .iter()
+        .map(|p| resolve_absolute(p, cwd).unwrap_or_else(|_| p.clone()))
+        .collect();
+
+    if roots.is_empty() {
+        let mut common: Option<PathBuf> = None;
+        for block in blocks {
+            let parent = block.original_absolute_path.parent().unwrap_or(Path::new("/"));
+            common = Some(match common {
+                None => parent.to_path_buf(),
+                Some(ref c) => common_ancestor(c, parent),
+            });
+        }
+        if let Some(c) = common {
+            roots.push(c);
+        } else {
+            roots.push(cwd.to_path_buf());
+        }
+    }
+
+    roots
+}
+
+fn common_ancestor(a: &Path, b: &Path) -> PathBuf {
+    let a_comps: Vec<_> = a.components().collect();
+    let b_comps: Vec<_> = b.components().collect();
+    let mut result = PathBuf::new();
+    for i in 0..a_comps.len().min(b_comps.len()) {
+        if a_comps[i] == b_comps[i] {
+            result.push(a_comps[i]);
+        } else {
+            break;
+        }
+    }
+    if result.as_os_str().is_empty() {
+        PathBuf::from("/")
+    } else {
+        result
+    }
+}
+
+fn is_within_allowed_roots(path: &Path, roots: &[PathBuf]) -> bool {
+    let normalized = crate::pathing::normalize_path(path);
+    for root in roots {
+        let root_normalized = crate::pathing::normalize_path(root);
+        if normalized.starts_with(&root_normalized) {
+            return true;
+        }
+    }
+    false
+}
+
+fn unified_diff(old: &str, new: &str, path: &Path) -> String {
+    use similar::TextDiff;
+    let diff = TextDiff::from_lines(old, new);
+    let mut result = String::new();
+    for change in diff.iter_all_changes() {
+        let prefix = match change.tag() {
+            similar::ChangeTag::Delete => "-",
+            similar::ChangeTag::Insert => "+",
+            similar::ChangeTag::Equal => " ",
+        };
+        result.push_str(&format!("{}{}", prefix, change));
+    }
+    if result.trim().is_empty() {
+        return String::new();
+    }
+    format!("--- {} (current)\n+++ {} (soup)\n{}", path.display(), path.display(), result)
 }
 
 fn resolve_direct_soup_document(
@@ -312,6 +449,8 @@ mod tests {
                     logical_line_count: 1,
                     trailing_newline: false,
                     content_lines: vec!["content".to_string()],
+                    base_sha: None,
+                    read_only: false,
                 })
                 .collect(),
         }

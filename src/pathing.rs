@@ -344,7 +344,7 @@ fn compare_paths_for_output(left: &PathBuf, right: &PathBuf) -> std::cmp::Orderi
     left_token.cmp(&right_token).then_with(|| left.cmp(right))
 }
 
-fn normalize_path(path: &Path) -> PathBuf {
+pub fn normalize_path(path: &Path) -> PathBuf {
     let mut normalized = PathBuf::new();
 
     for component in path.components() {

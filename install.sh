@@ -24,12 +24,10 @@ if [[ ":$PATH:" != *":$HOME/.local/bin:"* ]]; then
 fi
 
 echo "Creating config directory and default config..."
-cargo run --release -- --version >/dev/null 2>&1 || true
-
 CONFIG_DIR="$HOME/.config/soupify"
 mkdir -p "$CONFIG_DIR"
 if [[ ! -f "$CONFIG_DIR/config.yaml" ]]; then
-    cargo run --release -- --help >/dev/null 2>&1 || true
+    ./target/release/soupify --version >/dev/null 2>&1 || true
 fi
 
 echo ""

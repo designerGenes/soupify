@@ -22,12 +22,18 @@ pub fn find_matching_soup_file(
     }
 }
 
-pub fn run_desoupify(args: &CliArgs, _config: &Config) -> Result<Vec<PathBuf>, SoupifyError> {
+pub fn run_desoupify(args: &CliArgs, config: &Config) -> Result<Vec<PathBuf>, SoupifyError> {
     let cwd = std::env::current_dir().map_err(|error| SoupifyError::FileReadFailure {
         path: PathBuf::from("."),
         source: error,
     })?;
-    let soup_dir = resolve_output_dir(args.output_dir.as_deref(), &cwd)?;
+    let soup_dir = resolve_output_dir(
+        args.output_dir
+            .as_deref()
+            .or(args.soupify_to.as_deref())
+            .or(config.soupified_folder.as_deref()),
+        &cwd,
+    )?;
     let resolved_inputs = args
         .inputs
         .iter()

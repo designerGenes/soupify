@@ -129,7 +129,7 @@ fn uses_default_output_directory() {
         .assert()
         .success();
 
-    assert!(home.join("soup/sample.md").exists());
+    assert!(home.join(".soupify/soupified/sample.md").exists());
 }
 
 #[test]

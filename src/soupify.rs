@@ -21,7 +21,8 @@ pub fn run_soupify(args: &CliArgs, config: &Config) -> Result<PathBuf, SoupifyEr
     let output_dir = resolve_output_dir(
         args.output_dir
             .as_deref()
-            .or(args.soupify_to.as_deref()),
+            .or(args.soupify_to.as_deref())
+            .or(config.soupified_folder.as_deref()),
         &cwd,
     )?;
     let resolved_inputs = args

@@ -3,6 +3,7 @@ use std::process::Command;
 
 use crate::config::Config;
 use crate::error::SoupifyError;
+use crate::pathing::expand_tilde;
 
 const MOVE_RULE_NAME: &str = "move soupified files";
 const AUTO_DESOUPIFY_RULE_NAME: &str = "auto-desoupify";
@@ -28,9 +29,15 @@ pub fn ensure_rules(config: &Config) -> Result<Vec<String>, SoupifyError> {
 
     let to_desoupify = config
         .to_desoupify_folder
-        .clone()
+        .as_deref()
+        .map(expand_tilde)
         .or_else(crate::config::default_to_desoupify_folder)
-        .unwrap_or_else(|| PathBuf::from("~/.soupify/to_desoupify"));
+        .unwrap_or_else(|| {
+            let home = std::env::var_os("HOME")
+                .map(PathBuf::from)
+                .unwrap_or_else(|| PathBuf::from("~"));
+            home.join(".soupify").join("to_desoupify")
+        });
 
     if !has_rule_named(&existing_rules, MOVE_RULE_NAME) {
         add_move_rule(&to_desoupify)?;

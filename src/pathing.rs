@@ -120,11 +120,27 @@ fn glob_to_regex(glob: &str) -> String {
     regex
 }
 
+pub fn expand_tilde(path: &Path) -> PathBuf {
+    let s = path.to_string_lossy();
+    if s == "~" {
+        return std::env::var_os("HOME")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| path.to_path_buf());
+    }
+    if let Some(rest) = s.strip_prefix("~/") {
+        if let Some(home) = std::env::var_os("HOME") {
+            return PathBuf::from(home).join(rest);
+        }
+    }
+    path.to_path_buf()
+}
+
 pub fn resolve_absolute(input: &Path, cwd: &Path) -> Result<PathBuf, SoupifyError> {
-    let joined = if input.is_absolute() {
-        input.to_path_buf()
+    let expanded = expand_tilde(input);
+    let joined = if expanded.is_absolute() {
+        expanded
     } else {
-        cwd.join(input)
+        cwd.join(expanded)
     };
 
     Ok(normalize_path(&joined))
@@ -137,7 +153,7 @@ pub fn resolve_output_dir(output_dir: Option<&Path>, cwd: &Path) -> Result<PathB
             let home = std::env::var_os("HOME")
                 .map(PathBuf::from)
                 .ok_or(SoupifyError::HomeDirectoryResolutionFailure)?;
-            Ok(normalize_path(&home.join("soup")))
+            Ok(normalize_path(&home.join(".soupify").join("soupified")))
         }
     }
 }

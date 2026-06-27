@@ -4,6 +4,7 @@ use std::process::Command;
 use crate::config::Config;
 use crate::error::SoupifyError;
 use crate::models::SoupMetaBlock;
+use crate::repomap;
 
 pub fn find_git_root(start: &Path) -> Option<PathBuf> {
     let output = Command::new("git")
@@ -48,55 +49,18 @@ pub fn generate_repomap(
     config: &Config,
 ) -> Result<SoupMetaBlock, SoupifyError> {
     let map_tokens = config.graph_map_tokens;
-    let mut cmd_args = vec![
-        "repomap.py".to_string(),
-        "--map-tokens".to_string(),
-        map_tokens.to_string(),
-    ];
 
-    if !seed_files.is_empty() {
-        cmd_args.push("--chat-files".to_string());
-        for seed in seed_files {
-            let relative = seed
-                .strip_prefix(repo_root)
-                .unwrap_or(seed);
-            cmd_args.push(relative.to_string_lossy().to_string());
-        }
-    }
-
-    cmd_args.push("--other-files".to_string());
-    cmd_args.push(repo_root.to_string_lossy().to_string());
-
-    let output = Command::new("python")
-        .args(&cmd_args)
-        .current_dir(repo_root)
-        .output()
-        .map_err(|error| {
-            SoupifyError::RepoMapGenerationFailure(format!(
-                "failed to execute repomap.py: {error}"
-            ))
+    let body = repomap::generate_repomap(repo_root, seed_files, map_tokens)
+        .ok_or_else(|| {
+            SoupifyError::RepoMapGenerationFailure(
+                "no repository map could be generated".to_string(),
+            )
         })?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(SoupifyError::RepoMapGenerationFailure(format!(
-            "repomap.py exited with {}: {stderr}",
-            output.status
-        )));
-    }
-
-    let body = String::from_utf8(output.stdout).map_err(|error| {
-        SoupifyError::RepoMapGenerationFailure(format!(
-            "repomap.py output is not valid UTF-8: {error}"
-        ))
-    })?;
 
     let content_lines: Vec<String> = if body.is_empty() {
         Vec::new()
     } else {
-        body.split('\n')
-            .map(ToString::to_string)
-            .collect()
+        body.split('\n').map(ToString::to_string).collect()
     };
 
     let line_count = content_lines.len();

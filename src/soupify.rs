@@ -74,7 +74,7 @@ pub fn run_soupify(args: &CliArgs, config: &Config) -> Result<PathBuf, SoupifyEr
         source: error,
     })?;
 
-    let output_file = output_dir.join(build_output_filename(&files)?);
+    let output_file = output_dir.join(build_output_filename(&files, !meta_blocks.is_empty())?);
     fs::write(&output_file, markdown).map_err(|error| SoupifyError::FileWriteFailure {
         path: output_file.clone(),
         source: error,

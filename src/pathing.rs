@@ -176,7 +176,7 @@ pub fn collect_source_files(
     Ok(files)
 }
 
-pub fn build_output_filename(files: &[PathBuf]) -> Result<String, SoupifyError> {
+pub fn build_output_filename(files: &[PathBuf], has_graph: bool) -> Result<String, SoupifyError> {
     if files.is_empty() {
         return Err(SoupifyError::InputExpandedToZeroFiles);
     }
@@ -190,21 +190,20 @@ pub fn build_output_filename(files: &[PathBuf]) -> Result<String, SoupifyError> 
     }
 
     let joined = parts.join("_");
-    let max_filename_len = 200; // Leave room for .md extension and hash suffix if needed
-    
-    if joined.len() + 3 <= 255 {
-        // Standard case: filename + .md fits within 255 char limit
-        Ok(format!("{}.md", joined))
+    let suffix = if has_graph { "_graph" } else { "" };
+    let max_filename_len = 200;
+
+    if joined.len() + suffix.len() + 3 <= 255 {
+        Ok(format!("{}{}.md", joined, suffix))
     } else {
-        // Too long: use a truncated name with a hash suffix
         use std::collections::hash_map::DefaultHasher;
         use std::hash::{Hash, Hasher};
-        
+
         let mut hasher = DefaultHasher::new();
         joined.hash(&mut hasher);
         let hash = hasher.finish();
         let truncated = joined.chars().take(max_filename_len).collect::<String>();
-        Ok(format!("{}_{:x}.md", truncated, hash))
+        Ok(format!("{}{}_{}.md", truncated, suffix, format!("{:x}", hash)))
     }
 }
 
@@ -507,7 +506,10 @@ mod tests {
             PathBuf::from("/tmp/beta/file3.md"),
         ];
 
-        let filename = build_output_filename(&files).expect("filename should build");
+        let filename = build_output_filename(&files, false).expect("filename should build");
         assert_eq!(filename, "file1_file2_file3_file4.md");
+
+        let filename_graph = build_output_filename(&files, true).expect("filename should build");
+        assert_eq!(filename_graph, "file1_file2_file3_file4_graph.md");
     }
 }

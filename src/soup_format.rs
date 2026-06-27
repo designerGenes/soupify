@@ -4,10 +4,20 @@ use std::sync::OnceLock;
 use regex::Regex;
 
 use crate::error::SoupifyError;
-use crate::models::{SoupBlock, SoupDocument, SoupPartialRange, SourceFile};
+use crate::models::{SoupBlock, SoupDocument, SoupMetaBlock, SoupPartialRange, SourceFile};
 
-pub fn serialize_document(files: &[SourceFile]) -> Result<String, SoupifyError> {
+pub fn serialize_document(
+    meta_blocks: &[SoupMetaBlock],
+    files: &[SourceFile],
+) -> Result<String, SoupifyError> {
     let mut lines = Vec::new();
+
+    for meta in meta_blocks {
+        lines.push(serialize_meta_header(meta));
+        for line in &meta.content_lines {
+            lines.push(line.clone());
+        }
+    }
 
     for file in files {
         lines.push(serialize_header(file)?);
@@ -21,11 +31,15 @@ pub fn serialize_document(files: &[SourceFile]) -> Result<String, SoupifyError> 
 
 pub fn parse_document(markdown: &str) -> Result<SoupDocument, SoupifyError> {
     if markdown.is_empty() {
-        return Ok(SoupDocument { blocks: Vec::new() });
+        return Ok(SoupDocument {
+            meta_blocks: Vec::new(),
+            blocks: Vec::new(),
+        });
     }
 
     let lines: Vec<&str> = markdown.split('\n').collect();
 
+    let mut meta_blocks = Vec::new();
     let mut blocks = Vec::new();
     let mut index = 0usize;
 
@@ -34,6 +48,14 @@ pub fn parse_document(markdown: &str) -> Result<SoupDocument, SoupifyError> {
         if header.is_empty() && index == lines.len() - 1 {
             break;
         }
+
+        if header.starts_with("#SOUP_META ") {
+            let (meta_block, consumed) = parse_meta_block(header, index + 1, &lines)?;
+            index += 1 + consumed;
+            meta_blocks.push(meta_block);
+            continue;
+        }
+
         let (path, partial_range, logical_line_count, trailing_newline) =
             parse_header(header, index + 1)?;
         index += 1;
@@ -61,7 +83,73 @@ pub fn parse_document(markdown: &str) -> Result<SoupDocument, SoupifyError> {
         });
     }
 
-    Ok(SoupDocument { blocks })
+    Ok(SoupDocument { meta_blocks, blocks })
+}
+
+fn serialize_meta_header(meta: &SoupMetaBlock) -> String {
+    format!(
+        "#SOUP_META \"{}\" #SOUP_META_KIND {} #SOUP_META_FORMAT {} #SOUP_META_LINES {} #SOUP_META_READONLY {}",
+        meta.label, meta.kind, meta.format, meta.line_count, meta.readonly
+    )
+}
+
+fn parse_meta_block(
+    header: &str,
+    line_number: usize,
+    lines: &[&str],
+) -> Result<(SoupMetaBlock, usize), SoupifyError> {
+    let captures = meta_header_regex().captures(header).ok_or_else(|| {
+        SoupifyError::SoupParseFailure(format!(
+            "malformed soup meta header on line {line_number}: {header}"
+        ))
+    })?;
+
+    let label = captures.get(1).unwrap().as_str().to_string();
+    let kind = captures.get(2).unwrap().as_str().to_string();
+    let format = captures.get(3).unwrap().as_str().to_string();
+    let line_count = captures
+        .get(4)
+        .unwrap()
+        .as_str()
+        .parse::<usize>()
+        .map_err(|error| {
+            SoupifyError::SoupParseFailure(format!(
+                "invalid meta line count on line {line_number}: {error}"
+            ))
+        })?;
+    let readonly = match captures.get(5).unwrap().as_str() {
+        "true" => true,
+        "false" => false,
+        other => {
+            return Err(SoupifyError::SoupParseFailure(format!(
+                "invalid readonly marker on line {line_number}: {other}"
+            )));
+        }
+    };
+
+    let start = line_number;
+    if lines.len().saturating_sub(start) < line_count {
+        return Err(SoupifyError::SoupParseFailure(format!(
+            "declared meta line count {line_count} exceeds available lines on line {line_number}"
+        )));
+    }
+
+    let mut content_lines = Vec::with_capacity(line_count);
+    for i in 0..line_count {
+        content_lines.push(lines[start + i].to_string());
+    }
+
+    Ok((
+        SoupMetaBlock {
+            label,
+            kind,
+            format,
+            line_count,
+            readonly,
+            content_lines,
+        },
+        line_count,
+    ))
 }
 
 fn serialize_header(file: &SourceFile) -> Result<String, SoupifyError> {
@@ -230,11 +318,21 @@ fn header_regex() -> &'static Regex {
     })
 }
 
+fn meta_header_regex() -> &'static Regex {
+    static META_HEADER_REGEX: OnceLock<Regex> = OnceLock::new();
+    META_HEADER_REGEX.get_or_init(|| {
+        Regex::new(
+            r#"^#SOUP_META "(.+?)" #SOUP_META_KIND (\S+) #SOUP_META_FORMAT (\S+) #SOUP_META_LINES (\d+) #SOUP_META_READONLY (true|false)$"#,
+        )
+        .expect("meta header regex should compile")
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
 
-    use crate::models::{SoupPartialRange, SourceFile};
+    use crate::models::{SoupMetaBlock, SoupPartialRange, SourceFile};
 
     use super::{analyze_contents, parse_document, serialize_document};
 
@@ -256,7 +354,7 @@ mod tests {
 
     #[test]
     fn serializes_a_single_block_correctly() {
-        let document = serialize_document(&[source_file("/tmp/file.txt", "hello")])
+        let document = serialize_document(&[], &[source_file("/tmp/file.txt", "hello")])
             .expect("document should serialize");
         assert_eq!(
             document,
@@ -266,10 +364,13 @@ mod tests {
 
     #[test]
     fn serializes_multiple_blocks_correctly() {
-        let document = serialize_document(&[
-            source_file("/tmp/one.txt", "one\n"),
-            source_file("/tmp/two.txt", "two"),
-        ])
+        let document = serialize_document(
+            &[],
+            &[
+                source_file("/tmp/one.txt", "one\n"),
+                source_file("/tmp/two.txt", "two"),
+            ],
+        )
         .expect("document should serialize");
 
         assert_eq!(
@@ -363,7 +464,7 @@ mod tests {
     fn preserves_files_with_and_without_trailing_newline() {
         let with_newline = source_file("/tmp/with.txt", "hello\n");
         let without_newline = source_file("/tmp/without.txt", "hello");
-        let document = serialize_document(&[with_newline, without_newline])
+        let document = serialize_document(&[], &[with_newline, without_newline])
             .expect("document should serialize");
         let parsed = parse_document(&document).expect("document should parse");
 
@@ -378,7 +479,7 @@ mod tests {
             source_file("/tmp/multi.txt", "one\n\nthree\n"),
         ];
 
-        let markdown = serialize_document(&files).expect("document should serialize");
+        let markdown = serialize_document(&[], &files).expect("document should serialize");
         let parsed = parse_document(&markdown).expect("document should parse");
 
         assert_eq!(parsed.blocks.len(), 2);
@@ -395,5 +496,82 @@ mod tests {
         assert_eq!(document.blocks.len(), 1);
         assert_eq!(document.blocks[0].content_lines, vec!["hello"]);
         assert!(document.blocks[0].trailing_newline);
+    }
+
+    #[test]
+    fn serializes_meta_block_before_file_blocks() {
+        let meta = SoupMetaBlock {
+            label: "repo-graph".to_string(),
+            kind: "codegraph".to_string(),
+            format: "repomap".to_string(),
+            line_count: 2,
+            readonly: true,
+            content_lines: vec!["line1".to_string(), "line2".to_string()],
+        };
+        let files = vec![source_file("/tmp/file.txt", "hello")];
+        let document =
+            serialize_document(&[meta], &files).expect("document should serialize");
+
+        assert!(document.starts_with("#SOUP_META \"repo-graph\""));
+        assert!(document.contains("line1\nline2\n#SOUP"));
+    }
+
+    #[test]
+    fn parses_meta_block_correctly() {
+        let input = "#SOUP_META \"repo-graph\" #SOUP_META_KIND codegraph #SOUP_META_FORMAT repomap #SOUP_META_LINES 3 #SOUP_META_READONLY true\nline1\nline2\nline3\n#SOUP \"/tmp/file.txt\" #SOUPED_LINES 1 #SOUP_TRAILING_NEWLINE 0\nhello";
+        let document = parse_document(input).expect("document should parse");
+
+        assert_eq!(document.meta_blocks.len(), 1);
+        assert_eq!(document.meta_blocks[0].label, "repo-graph");
+        assert_eq!(document.meta_blocks[0].kind, "codegraph");
+        assert_eq!(document.meta_blocks[0].format, "repomap");
+        assert_eq!(document.meta_blocks[0].line_count, 3);
+        assert!(document.meta_blocks[0].readonly);
+        assert_eq!(
+            document.meta_blocks[0].content_lines,
+            vec!["line1", "line2", "line3"]
+        );
+
+        assert_eq!(document.blocks.len(), 1);
+        assert_eq!(document.blocks[0].content_lines, vec!["hello"]);
+    }
+
+    #[test]
+    fn round_trips_meta_blocks() {
+        let meta = SoupMetaBlock {
+            label: "test-graph".to_string(),
+            kind: "codegraph".to_string(),
+            format: "dot".to_string(),
+            line_count: 2,
+            readonly: true,
+            content_lines: vec!["digraph {".to_string(), "}".to_string()],
+        };
+        let files = vec![source_file("/tmp/file.txt", "content\n")];
+
+        let markdown =
+            serialize_document(&[meta], &files).expect("document should serialize");
+        let parsed = parse_document(&markdown).expect("document should parse");
+
+        assert_eq!(parsed.meta_blocks.len(), 1);
+        assert_eq!(parsed.meta_blocks[0].label, "test-graph");
+        assert_eq!(parsed.meta_blocks[0].format, "dot");
+        assert_eq!(parsed.meta_blocks[0].line_count, 2);
+        assert!(parsed.meta_blocks[0].readonly);
+        assert_eq!(parsed.blocks.len(), 1);
+    }
+
+    #[test]
+    fn parses_document_with_no_meta_blocks() {
+        let input = "#SOUP \"/tmp/file.txt\" #SOUPED_LINES 1 #SOUP_TRAILING_NEWLINE 0\nhello";
+        let document = parse_document(input).expect("document should parse");
+        assert!(document.meta_blocks.is_empty());
+        assert_eq!(document.blocks.len(), 1);
+    }
+
+    #[test]
+    fn rejects_meta_block_with_insufficient_content_lines() {
+        let input = "#SOUP_META \"test\" #SOUP_META_KIND codegraph #SOUP_META_FORMAT repomap #SOUP_META_LINES 5 #SOUP_META_READONLY true\nonly_one";
+        let error = parse_document(input).expect_err("should fail");
+        assert!(error.to_string().contains("exceeds available lines"));
     }
 }

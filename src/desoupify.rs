@@ -2,6 +2,7 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use crate::config::Config;
 use crate::error::SoupifyError;
 use crate::models::{CliArgs, SoupBlock, SoupDocument, SoupMatchResult, SoupPartialRange};
 use crate::pathing::{resolve_absolute, resolve_output_dir};
@@ -21,7 +22,7 @@ pub fn find_matching_soup_file(
     }
 }
 
-pub fn run_desoupify(args: &CliArgs) -> Result<Vec<PathBuf>, SoupifyError> {
+pub fn run_desoupify(args: &CliArgs, _config: &Config) -> Result<Vec<PathBuf>, SoupifyError> {
     let cwd = std::env::current_dir().map_err(|error| SoupifyError::FileReadFailure {
         path: PathBuf::from("."),
         source: error,
@@ -296,6 +297,7 @@ mod tests {
 
     fn document(paths: &[&str]) -> SoupDocument {
         SoupDocument {
+            meta_blocks: vec![],
             blocks: paths
                 .iter()
                 .map(|path| SoupBlock {
@@ -420,5 +422,24 @@ mod tests {
         assert!(error
             .to_string()
             .contains("partial soup range 2-4 exceeds existing file length 2"));
+    }
+
+    #[test]
+    fn desoupify_skips_meta_blocks() {
+        let temp = tempdir().expect("tempdir should exist");
+        let soup_file = temp.path().join("with_meta.md");
+        fs::write(
+            &soup_file,
+            "#SOUP_META \"repo-graph\" #SOUP_META_KIND codegraph #SOUP_META_FORMAT repomap #SOUP_META_LINES 2 #SOUP_META_READONLY true\ngraph_line1\ngraph_line2\n#SOUP \"/tmp/file.txt\" #SOUPED_LINES 1 #SOUP_TRAILING_NEWLINE 0\nhello",
+        )
+        .expect("soup file should be written");
+
+        let direct = resolve_direct_soup_document(std::slice::from_ref(&soup_file))
+            .expect("direct soup detection should succeed")
+            .expect("direct soup document should be detected");
+
+        assert_eq!(direct.1.meta_blocks.len(), 1);
+        assert_eq!(direct.1.blocks.len(), 1);
+        assert_eq!(direct.1.blocks[0].content_lines, vec!["hello"]);
     }
 }

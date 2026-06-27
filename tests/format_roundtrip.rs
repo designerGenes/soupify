@@ -21,7 +21,7 @@ fn source_file(path: &str, contents: &str) -> SourceFile {
 
 fn round_trip(contents: &str) -> String {
     let source = source_file("/tmp/file.txt", contents);
-    let serialized = serialize_document(&[source]).expect("document should serialize");
+    let serialized = serialize_document(&[], &[source]).expect("document should serialize");
     let parsed = parse_document(&serialized).expect("document should parse");
     let block = &parsed.blocks[0];
     let mut restored = block.content_lines.join("\n");

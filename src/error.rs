@@ -64,6 +64,15 @@ pub enum SoupifyError {
         directory: PathBuf,
         message: String,
     },
+
+    #[error("config error: {0}")]
+    ConfigError(String),
+
+    #[error("git repository not found: {0}")]
+    GitRepoNotFound(String),
+
+    #[error("repomap generation failed: {0}")]
+    RepoMapGenerationFailure(String),
 }
 
 fn format_paths(paths: &[PathBuf]) -> String {

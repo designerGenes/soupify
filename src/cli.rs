@@ -22,6 +22,14 @@ struct RawCliArgs {
     recursive: bool,
     #[arg(short = 'x', long = "exclude")]
     exclude: Vec<String>,
+    #[arg(short = 'g', long = "include-graph")]
+    include_graph: bool,
+    #[arg(long = "soupify-to")]
+    soupify_to: Option<PathBuf>,
+    #[arg(long = "graph-format")]
+    graph_format: Option<String>,
+    #[arg(long = "graph-map-tokens")]
+    graph_map_tokens: Option<usize>,
     #[arg(value_name = "INPUT", required = true)]
     inputs: Vec<PathBuf>,
 }
@@ -57,6 +65,10 @@ where
         recursive: parsed.recursive,
         inputs: parsed.inputs,
         exclude: parsed.exclude,
+        include_graph: parsed.include_graph,
+        soupify_to: parsed.soupify_to,
+        graph_format: parsed.graph_format,
+        graph_map_tokens: parsed.graph_map_tokens,
     })
 }
 
@@ -76,5 +88,37 @@ mod tests {
         let result = parse_cli_args_from(["soupify", "-d", "-s", "file.txt"]);
         let error = result.expect_err("expected invalid flag combination");
         assert!(error.to_string().contains("cannot be combined"));
+    }
+
+    #[test]
+    fn parses_include_graph_flag() {
+        let result = parse_cli_args_from(["soupify", "-g", "file.txt"]).expect("should parse");
+        assert!(result.include_graph);
+    }
+
+    #[test]
+    fn parses_graph_format_and_tokens() {
+        let result = parse_cli_args_from([
+            "soupify",
+            "--graph-format",
+            "dot",
+            "--graph-map-tokens",
+            "4096",
+            "file.txt",
+        ])
+        .expect("should parse");
+        assert_eq!(result.graph_format.as_deref(), Some("dot"));
+        assert_eq!(result.graph_map_tokens, Some(4096));
+    }
+
+    #[test]
+    fn parses_soupify_to_flag() {
+        let result =
+            parse_cli_args_from(["soupify", "--soupify-to", "/tmp/out", "file.txt"])
+                .expect("should parse");
+        assert_eq!(
+            result.soupify_to.as_deref(),
+            Some(std::path::Path::new("/tmp/out"))
+        );
     }
 }

@@ -1,31 +1,40 @@
 pub mod cli;
+pub mod config;
 pub mod desoupify;
 pub mod error;
+pub mod graph;
 pub mod models;
 pub mod open;
 pub mod pathing;
+pub mod sharktopus;
 pub mod soup_format;
 pub mod soupify;
 
 use cli::parse_cli_args;
+use config::load_config;
 use error::SoupifyError;
 use open::{OutputDirOpener, SystemOutputDirOpener};
 
 pub fn run() -> Result<(), SoupifyError> {
+    if let Err(error) = config::ensure_config_dir() {
+        eprintln!("warning: failed to create config directory: {error}");
+    }
     let args = parse_cli_args()?;
-    run_with_opener(&args, &SystemOutputDirOpener)
+    let config = load_config();
+    run_with_opener(&args, &config, &SystemOutputDirOpener)
 }
 
 pub fn run_with_opener(
     args: &models::CliArgs,
+    config: &config::Config,
     opener: &impl OutputDirOpener,
 ) -> Result<(), SoupifyError> {
     if args.desoupify {
-        desoupify::run_desoupify(args)?;
+        desoupify::run_desoupify(args, config)?;
         return Ok(());
     }
 
-    let soup_file = soupify::run_soupify(args)?;
+    let soup_file = soupify::run_soupify(args, config)?;
     if args.show_output_dir {
         let output_dir = soup_file
             .parent()

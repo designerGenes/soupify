@@ -8,6 +8,10 @@ pub struct CliArgs {
     pub recursive: bool,
     pub inputs: Vec<PathBuf>,
     pub exclude: Vec<String>,
+    pub include_graph: bool,
+    pub soupify_to: Option<PathBuf>,
+    pub graph_format: Option<String>,
+    pub graph_map_tokens: Option<usize>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -36,7 +40,18 @@ pub struct SoupBlock {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SoupMetaBlock {
+    pub label: String,
+    pub kind: String,
+    pub format: String,
+    pub line_count: usize,
+    pub readonly: bool,
+    pub content_lines: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SoupDocument {
+    pub meta_blocks: Vec<SoupMetaBlock>,
     pub blocks: Vec<SoupBlock>,
 }
 

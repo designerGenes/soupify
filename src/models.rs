@@ -12,6 +12,15 @@ pub struct CliArgs {
     pub soupify_to: Option<PathBuf>,
     pub graph_format: Option<String>,
     pub graph_map_tokens: Option<usize>,
+    pub matches: Vec<String>,
+    pub seeds: Vec<PathBuf>,
+    pub hops: Option<usize>,
+    pub symbols: Vec<String>,
+    pub task: Option<String>,
+    pub top_k: Option<usize>,
+    pub max_soup_bytes: Option<usize>,
+    pub reindex: bool,
+    pub explain_selection: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -9,6 +9,7 @@ use crate::pathing::{
     build_output_filename, collect_source_files, filename_token, resolve_absolute,
     resolve_output_dir,
 };
+use crate::selection;
 use crate::sharktopus;
 use crate::soup_format::{analyze_contents, serialize_document};
 
@@ -38,21 +39,64 @@ pub fn run_soupify(args: &CliArgs, config: &Config) -> Result<PathBuf, SoupifyEr
     }
 
     let max_depth = if args.recursive { Some(usize::MAX) } else { Some(0) };
-    let files = collect_source_files(&resolved_inputs, max_depth, &args.exclude)?;
-    if files.is_empty() {
+    let candidate_files = collect_source_files(&resolved_inputs, max_depth, &args.exclude)?;
+    if candidate_files.is_empty() {
         return Err(SoupifyError::InputExpandedToZeroFiles);
     }
+
+    let corpus_root = graph::shared_git_root(&candidate_files)
+        .unwrap_or_else(|| resolved_inputs[0].clone());
+
+    let (files, selection_meta) = if selection::selection_mode(args) {
+        let selectors = selection::build_selectors(args, config)?;
+        let map_reserve = selection::budget::estimate_map_reserve(config);
+        let sel = selection::select_files(
+            &selectors,
+            &corpus_root,
+            map_reserve,
+            config,
+            args.reindex,
+        )?;
+
+        for dropped in &sel.dropped {
+            eprintln!(
+                "warning: {} matched but cut to stay under budget",
+                dropped.rel_path
+            );
+        }
+
+        let meta = if args.explain_selection || config.selection_provenance {
+            vec![selection::build_provenance_block(
+                &sel,
+                &selectors,
+                config.selection_provenance_max_bytes,
+            )]
+        } else {
+            Vec::new()
+        };
+
+        let paths: Vec<PathBuf> = sel.selected.iter().map(|s| s.path.clone()).collect();
+        if paths.is_empty() {
+            (candidate_files, meta)
+        } else {
+            (paths, meta)
+        }
+    } else {
+        (candidate_files, Vec::new())
+    };
 
     let source_files = files
         .iter()
         .map(build_source_file)
         .collect::<Result<Vec<_>, _>>()?;
 
-    let meta_blocks = if graph::should_include_graph(args.include_graph, config) {
-        build_graph_meta_blocks(&files, config)?
+    let mut meta_blocks = if graph::should_include_graph(args.include_graph, config) {
+        build_graph_meta_blocks(&corpus_root, &files, config)?
     } else {
         Vec::new()
     };
+
+    meta_blocks.extend(selection_meta);
 
     let markdown = serialize_document(&meta_blocks, &source_files)?;
 
@@ -84,17 +128,11 @@ pub fn run_soupify(args: &CliArgs, config: &Config) -> Result<PathBuf, SoupifyEr
 }
 
 fn build_graph_meta_blocks(
-    files: &[PathBuf],
+    corpus_root: &PathBuf,
+    seed_files: &[PathBuf],
     config: &Config,
 ) -> Result<Vec<SoupMetaBlock>, SoupifyError> {
-    let Some(repo_root) = graph::shared_git_root(files) else {
-        eprintln!(
-            "warning: --include-graph set but files do not share a single git repository; skipping graph"
-        );
-        return Ok(Vec::new());
-    };
-
-    let meta_block = graph::generate_repomap(&repo_root, files, config)?;
+    let meta_block = graph::generate_repomap(corpus_root, seed_files, config)?;
     Ok(vec![meta_block])
 }
 

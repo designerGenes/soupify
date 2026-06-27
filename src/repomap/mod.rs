@@ -1,7 +1,7 @@
-mod graph;
-mod importance;
-mod render;
-mod tags;
+pub mod graph;
+pub mod importance;
+pub mod render;
+pub mod tags;
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -144,7 +144,7 @@ pub fn generate_repomap(
     repo_map.get_repo_map(&chat_files, &other_files)
 }
 
-fn discover_source_files(root: &Path) -> Vec<String> {
+pub fn discover_source_files(root: &Path) -> Vec<String> {
     let skip_dirs: HashSet<&str> = HashSet::from([
         ".git", "node_modules", "__pycache__", "venv", "env",
         "target", "build", "dist", ".repomap.tags.cache.v1",

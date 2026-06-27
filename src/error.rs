@@ -73,6 +73,18 @@ pub enum SoupifyError {
 
     #[error("repomap generation failed: {0}")]
     RepoMapGenerationFailure(String),
+
+    #[error("--task supplied but config.allow_fuzzy_task is false; use --match/--seed/--symbol, or enable allow_fuzzy_task")]
+    FuzzyTaskDisabled,
+
+    #[error("index build failure: {0}")]
+    IndexBuildFailure(String),
+
+    #[error("retrieval query failure: {0}")]
+    RetrievalQueryFailure(String),
+
+    #[error("soup budget exceeded: highest-priority file {path} ({bytes} bytes) + map already exceed cap ({cap} bytes); raise --max-soup-bytes, narrow selectors, or use partial blocks")]
+    SoupBudgetExceeded { path: PathBuf, bytes: usize, cap: usize },
 }
 
 fn format_paths(paths: &[PathBuf]) -> String {

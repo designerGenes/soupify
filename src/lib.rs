@@ -7,6 +7,7 @@ pub mod models;
 pub mod open;
 pub mod pathing;
 pub mod repomap;
+pub mod selection;
 pub mod sharktopus;
 pub mod soup_format;
 pub mod soupify;

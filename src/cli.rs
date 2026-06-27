@@ -30,6 +30,24 @@ struct RawCliArgs {
     graph_format: Option<String>,
     #[arg(long = "graph-map-tokens")]
     graph_map_tokens: Option<usize>,
+    #[arg(long = "match", value_name = "TERM")]
+    match_terms: Vec<String>,
+    #[arg(long = "seed", value_name = "FILE")]
+    seeds: Vec<PathBuf>,
+    #[arg(long = "hops", value_name = "N")]
+    hops: Option<usize>,
+    #[arg(long = "symbol", value_name = "NAME")]
+    symbols: Vec<String>,
+    #[arg(long = "task", value_name = "PROSE")]
+    task: Option<String>,
+    #[arg(long = "top-k", value_name = "N")]
+    top_k: Option<usize>,
+    #[arg(long = "max-soup-bytes", value_name = "N")]
+    max_soup_bytes: Option<usize>,
+    #[arg(long = "reindex")]
+    reindex: bool,
+    #[arg(long = "explain-selection")]
+    explain_selection: bool,
     #[arg(value_name = "INPUT", required = true)]
     inputs: Vec<PathBuf>,
 }
@@ -69,6 +87,15 @@ where
         soupify_to: parsed.soupify_to,
         graph_format: parsed.graph_format,
         graph_map_tokens: parsed.graph_map_tokens,
+        matches: parsed.match_terms,
+        seeds: parsed.seeds,
+        hops: parsed.hops,
+        symbols: parsed.symbols,
+        task: parsed.task,
+        top_k: parsed.top_k,
+        max_soup_bytes: parsed.max_soup_bytes,
+        reindex: parsed.reindex,
+        explain_selection: parsed.explain_selection,
     })
 }
 

@@ -17,6 +17,13 @@ pub struct Config {
     pub graph_map_tokens: usize,
     pub graph_format: String,
     pub graph_force_include_supertypes: bool,
+    pub index_dir: Option<PathBuf>,
+    pub selection_default_hops: usize,
+    pub top_k: usize,
+    pub max_soup_bytes: usize,
+    pub allow_fuzzy_task: bool,
+    pub selection_provenance: bool,
+    pub selection_provenance_max_bytes: usize,
 }
 
 impl Default for Config {
@@ -31,6 +38,13 @@ impl Default for Config {
             graph_map_tokens: 2048,
             graph_format: "repomap".to_string(),
             graph_force_include_supertypes: true,
+            index_dir: None,
+            selection_default_hops: 1,
+            top_k: 12,
+            max_soup_bytes: 1_048_576,
+            allow_fuzzy_task: true,
+            selection_provenance: false,
+            selection_provenance_max_bytes: 2048,
         }
     }
 }
@@ -86,7 +100,22 @@ pub fn default_config_yaml() -> String {
          # Graph format: repomap | dot | json | mermaid\n\
          graph_format: {graph_format}\n\n\
          # Force-include declared protocols/superclasses of seed files.\n\
-         graph_force_include_supertypes: {force_supertypes}\n",
+         graph_force_include_supertypes: {force_supertypes}\n\n\
+         # Directory for the selection full-text index. Defaults to\n\
+         # $HOME/.cache/soupify/index. Lives outside any repo tree.\n\
+         index_dir: {index_dir}\n\n\
+         # Default BFS radius around --seed files.\n\
+         selection_default_hops: {sel_hops}\n\n\
+         # Max files selected by --match/--task/--symbol/--seed.\n\
+         top_k: {top_k}\n\n\
+         # Hard ceiling on serialized soup bytes (1 MiB default).\n\
+         max_soup_bytes: {max_soup_bytes}\n\n\
+         # If false, --task is rejected (deterministic-only mode).\n\
+         allow_fuzzy_task: {allow_fuzzy}\n\n\
+         # Emit a selection provenance #SOUP_META block.\n\
+         selection_provenance: {sel_prov}\n\n\
+         # Max bytes for the provenance block.\n\
+         selection_provenance_max_bytes: {sel_prov_max}\n",
         connect_watcher = false,
         auto_desoupify = false,
         warn_overwrite = false,
@@ -96,6 +125,13 @@ pub fn default_config_yaml() -> String {
         graph_tokens = 2048,
         graph_format = "repomap",
         force_supertypes = true,
+        index_dir = "~/.cache/soupify/index",
+        sel_hops = 1,
+        top_k = 12,
+        max_soup_bytes = 1_048_576,
+        allow_fuzzy = true,
+        sel_prov = false,
+        sel_prov_max = 2048,
     )
 }
 
@@ -131,6 +167,11 @@ pub fn default_to_desoupify_folder() -> Option<PathBuf> {
 pub fn default_soupified_folder() -> Option<PathBuf> {
     let home = std::env::var_os("HOME").map(PathBuf::from)?;
     Some(home.join(".soupify").join("soupified"))
+}
+
+pub fn default_index_dir() -> Option<PathBuf> {
+    let home = std::env::var_os("HOME").map(PathBuf::from)?;
+    Some(home.join(".cache").join("soupify").join("index"))
 }
 
 #[cfg(test)]

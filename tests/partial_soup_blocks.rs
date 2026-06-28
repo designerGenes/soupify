@@ -96,3 +96,35 @@ fn desoupify_reports_partial_ranges_that_exceed_existing_file_length() {
         .failure()
         .stderr(contains("partial soup range 2-4 exceeds existing file length 2"));
 }
+
+#[test]
+fn desoupify_applies_partial_block_despite_base_sha_drift() {
+    let temp = tempdir().expect("tempdir should exist");
+    let path = temp.path().join("drifted.txt");
+    let soup_file = temp.path().join("round2.soup");
+
+    fs::write(&path, "round1\nseed\ncontent\n").expect("post-round-1 file should be written");
+
+    let stale_sha = "0".repeat(64);
+    fs::write(
+        &soup_file,
+        format!(
+            "#SOUP \"{}\" #SOUP_PARTIAL_LINES 2-2 #SOUPED_LINES 1 #SOUP_TRAILING_NEWLINE 1 #SOUP_BASE_SHA {}\nupdated line two",
+            path.display(),
+            stale_sha
+        ),
+    )
+    .expect("soup file should be written");
+
+    cargo_bin()
+        .args(["-d"])
+        .arg(&soup_file)
+        .assert()
+        .success()
+        .stderr(contains("base SHA drift"));
+
+    assert_eq!(
+        fs::read_to_string(&path).expect("partial block should still be applied"),
+        "round1\nupdated line two\ncontent\n"
+    );
+}

@@ -123,7 +123,13 @@ pub fn default_config_yaml() -> String {
          # Emit a selection provenance #SOUP_META block.\n\
          selection_provenance: {sel_prov}\n\n\
          # Max bytes for the provenance block.\n\
-         selection_provenance_max_bytes: {sel_prov_max}\n",
+         selection_provenance_max_bytes: {sel_prov_max}\n\n\
+         # Secret scan mode: off | warn | block. 'off' disables all scanning;\n\
+         # 'warn' (default) prints warnings but never blocks; 'block' refuses\n\
+         # soups containing high-confidence secret patterns (private keys,\n\
+         # AWS/Google/Stripe tokens, JWTs, etc.). Override per-run with\n\
+         # --allow-secrets or --redact.\n\
+         secret_scan: {secret_scan}\n",
         connect_watcher = false,
         auto_desoupify = false,
         warn_overwrite = false,
@@ -140,6 +146,7 @@ pub fn default_config_yaml() -> String {
         allow_fuzzy = true,
         sel_prov = false,
         sel_prov_max = 2048,
+        secret_scan = "warn",
     )
 }
 
@@ -271,6 +278,7 @@ mod tests {
         assert!(yaml.contains("graph_map_tokens:"));
         assert!(yaml.contains("graph_format:"));
         assert!(yaml.contains("graph_force_include_supertypes:"));
+        assert!(yaml.contains("secret_scan:"));
     }
 
     #[test]

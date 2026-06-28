@@ -43,3 +43,25 @@ fn direct_soup_path_reports_parse_errors_from_that_file() {
         .failure()
         .stderr(contains("malformed soup header"));
 }
+
+#[test]
+fn desoupify_accepts_a_txt_file_with_soup_content() {
+    let temp = tempdir().expect("tempdir should exist");
+    let restored = temp.path().join("out/hello.txt");
+    let soup_file = temp.path().join("notes.txt");
+    fs::write(
+        &soup_file,
+        format!(
+            "#SOUP \"{}\" #SOUPED_LINES 1 #SOUP_TRAILING_NEWLINE 1\nhello",
+            restored.display()
+        ),
+    )
+    .expect("soup file should be written");
+
+    cargo_bin().args(["-d"]).arg(&soup_file).assert().success();
+
+    assert_eq!(
+        fs::read_to_string(&restored).expect("restored file should exist"),
+        "hello\n"
+    );
+}

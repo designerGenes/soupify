@@ -73,7 +73,7 @@ pub fn ensure_rules(config: &Config) -> Result<Vec<String>, SoupifyError> {
 
 fn list_rules() -> Result<String, SoupifyError> {
     let output = Command::new("sharktopus")
-        .args(["list-rules", "--pattern", SOUP_PATTERN])
+        .args(["list-rules"])
         .output()
         .map_err(|error| {
             SoupifyError::ConfigError(format!("failed to run sharktopus list-rules: {error}"))
@@ -100,11 +100,9 @@ fn add_move_rule(destination: &PathBuf) -> Result<(), SoupifyError> {
             "add-rule",
             "--name",
             MOVE_RULE_NAME,
-            "--pattern",
+            "--glob",
             SOUP_PATTERN,
-            "--action",
-            "move",
-            "--destination",
+            "--move-to",
             &dest_str,
         ])
         .output()
@@ -128,11 +126,9 @@ fn add_auto_desoupify_rule() -> Result<(), SoupifyError> {
             "add-rule",
             "--name",
             AUTO_DESOUPIFY_RULE_NAME,
-            "--pattern",
+            "--glob",
             SOUP_PATTERN,
-            "--action",
-            "run",
-            "--command",
+            "--run",
             "soupify -d __FILE__",
         ])
         .output()
@@ -156,16 +152,16 @@ mod tests {
 
     #[test]
     fn has_rule_named_detects_existing_rule() {
-        let output = "08C81EF5   move soupified files           *.soup.md            move Yes      ~/dev/output/soupified\n";
+        let output = "EA6AD4BC   move soupified files       1          glob=*.soup.md           move->~/.soupify/to_desoupify\n";
         assert!(has_rule_named(output, "move soupified files"));
         assert!(!has_rule_named(output, "auto-desoupify"));
     }
 
     #[test]
-    fn has_rule_named_matches_new_format() {
-        let output = "08C81EF5   cli      move soupified files                     *.soup.md                    move     Yes      1     -> ~/.soupify/to_desoupify\n";
-        assert!(has_rule_named(output, "move soupified files"));
-        assert!(!has_rule_named(output, "auto-desoupify"));
+    fn has_rule_named_matches_compact_format() {
+        let output = "B4223850   auto-desoupify             1          glob=*.soup.md           run:soupify -d __FILE__\n";
+        assert!(has_rule_named(output, "auto-desoupify"));
+        assert!(!has_rule_named(output, "move soupified files"));
     }
 
     #[test]

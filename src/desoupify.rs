@@ -72,18 +72,10 @@ pub fn run_desoupify(args: &CliArgs, config: &Config) -> Result<Vec<PathBuf>, So
                 if let Ok(on_disk_bytes) = fs::read(&restored_path) {
                     let actual = blake3::hash(&on_disk_bytes).to_hex().to_string();
                     if actual != *sha {
-                        if args.dry_run {
-                            eprintln!(
-                                "warning: base SHA drift for {}: expected {}, got {} (dry-run preview only)",
-                                restored_path.display(), sha, actual
-                            );
-                            continue;
-                        }
-                        return Err(SoupifyError::BaseShaDrift {
-                            path: restored_path.clone(),
-                            expected: sha.clone(),
-                            actual,
-                        });
+                        eprintln!(
+                            "warning: base SHA drift for {}: expected {}, got {}; applying partial block anyway",
+                            restored_path.display(), sha, actual
+                        );
                     }
                 }
             }
@@ -231,7 +223,15 @@ fn read_soup_document(path: &Path) -> Result<SoupDocument, SoupifyError> {
 }
 
 fn looks_like_soup_file(path: &Path) -> bool {
-    matches!(path.extension().and_then(|extension| extension.to_str()), Some("md" | "soup"))
+    if !path.is_file() {
+        return false;
+    }
+    let Ok(contents) = fs::read_to_string(path) else {
+        return false;
+    };
+    contents.lines().next().map_or(false, |first_line| {
+        first_line.starts_with("#SOUP ") || first_line.starts_with("#SOUP_META ")
+    })
 }
 
 fn match_soup_file(

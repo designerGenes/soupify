@@ -221,10 +221,18 @@ pub fn apply_redaction(files: &mut [SourceFile], findings: &[Finding]) {
 
 pub fn enforce(
     files: &[SourceFile],
-    _config: &crate::config::Config,
+    config: &crate::config::Config,
     allow_secrets: bool,
     redact: bool,
 ) -> Result<Vec<SourceFile>, SoupifyError> {
+    let mode = config.secret_scan.trim().to_lowercase();
+    let disabled = mode == "off" || mode == "disabled" || mode == "false" || mode == "none";
+    let block_mode = mode == "block" || mode == "strict";
+
+    if disabled {
+        return Ok(files.to_vec());
+    }
+
     let findings = scan_files(files);
 
     if findings.is_empty() {
@@ -232,7 +240,7 @@ pub fn enforce(
     }
 
     let has_block = findings.iter().any(|f| f.severity == Severity::Block);
-    let has_warn = findings.iter().any(|f| f.severity == Severity::Warn);
+    let _has_warn = findings.iter().any(|f| f.severity == Severity::Warn);
 
     let summary = findings
         .iter()
@@ -257,15 +265,13 @@ pub fn enforce(
         return Ok(files_mut);
     }
 
-    if has_block {
+    if has_block && block_mode {
         return Err(SoupifyError::SecretsDetected {
             findings_summary: summary,
         });
     }
 
-    if has_warn {
-        eprintln!("warning: potential secrets detected: {}", summary);
-    }
+    eprintln!("warning: potential secrets detected: {}", summary);
 
     Ok(files.to_vec())
 }
